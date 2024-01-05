@@ -9,11 +9,9 @@ function onMouseDown(player) {
 
 function onUpdated() {
     this.npcposition = 30;
-    this.drinkchoicemax = 5;
+    this.drinkchoicemax = 4;
     this.drinkchoicemin = 1;
-    this.scheduleevent(0.001, "outfitswap", player); 
     this.namecolor = "white";
-    this.name = this.customername;
     this.currentscore = 2;
     this.occupied = false;
     //player.busy = false;
@@ -27,10 +25,11 @@ function onUpdated() {
     this.waiterweapon = "Rock";
     this.needhelp = true;
     this.dir = 2;
-    this.outfitmax = 4;
+    this.outfitmax = 3;
     this.outfitmin = 1;
     //player.currentscore = 2;
     this.ani = "westlaw_order-alarm";
+    this.onOutfitSwap();
 }
 
 
@@ -66,6 +65,10 @@ function onPlayerSays(player) {
 
 function onPlayerTouchsMe(player) {
     this.sleep(0.3);
+    if (player.currentscore == 1 && this.occupied == true && player.working == true && player.busy == true && this.waiterid == player.id && this.needhelp == false) {
+        player.say("One " + this.drinkname + " coming right up!!", 2);
+        return;
+    }
     //Score 2,Fresh ID, F/F, Occupied false, need help false
     if (this.occupied == false && player.currentscore == 2 && player.working == false && player.busy == false && this.waiterid == "fresh" && this.needhelp == true) {
         player.working = true;
@@ -120,10 +123,6 @@ function onPlayerTouchsMe(player) {
         return;
     }
     // Chcker- Can i get your Order
-    if (player.currentscore == 1 && this.occupied == true && player.working == true && player.busy == true && this.waiterid == player.id && this.needhelp == false) {
-        player.say("One " + this.drinkname + " coming right up!!", 2);
-        return;
-    }
     // if i relogged and not mines
     if (this.occupied == false && player.currentscore == 1 && player.working == false && player.busy == false && this.waiterid == "fresh" && this.needhelp == true) {
         this.say("Hold on there buddy!", 1);
@@ -141,6 +140,7 @@ function onJobStart(player) {
     this.ani = "westlaw_order-" + this.drinkcolor; //gucci
     this.say(this.customermessage, 2);
     this.name = this.customername + "[" + player.name + "]";
+    return;
 }
 
 function onCountdown(player) {
@@ -178,6 +178,7 @@ function onDitch(player) {
     this.sleep(5);
     this.ani = "";
     this.name = "";
+    this.onOutfitSwap(player);
     this.namecolor = "white";
     this.sleep(this.waittime);
     this.currentscore = 2;
@@ -186,16 +187,16 @@ function onDitch(player) {
 }
 
 function onNewChar(player) {
-    this.scheduleevent(0.01, "pickdrink", player);
     if (this.y == 30) {
-        this.name = this.customername;
-        this.OutfitSwap(player); 
+        //this.name = this.customername;
+        //this.onPickDrink(player);
+        //this.onOutfitSwap(player); 
         return;
         } // - maybe
         // if it's not at 30
     if (this.y != 30) { this.y = this.npcposition; } // - maybe
     //player.walkspeed =  Math.floor(Math.random() * this.walkspeedmax + this.walkspeedmin);
-    this.name = this.customername;
+    //this.name = this.customername;
     //player.currentscore = 2; ---------------------------------
     this.say(this.welcomemessage, 2);
     this.waiterid = "fresh";
@@ -209,7 +210,6 @@ function onNewChar(player) {
 }
 
 function onPlayerAttacks(player) {
-    if (player.weapon != ["cup1", "cup2", "cup3", "cup4"]) { this.say("NOT a cup!", 1); return; }
     if (this.needhelp == false && this.occupied == true && player.working == true && player.busy == true && player.currentscore == 1 && player.weapon == this.drinkchoices && player.id == this.waiterid) { 
         this.counttip = this.counttipamount * 3;
         if (this.count > this.counttip) { 
@@ -226,7 +226,6 @@ function onPlayerAttacks(player) {
         this.say("Success!!!!", 1); 
         player.weapon = "waiter"; 
         player.currentscore = 2;
-        player.item = "waiter";
         this.scheduleevent(0.001, "ditch", player);
         return;
     }
@@ -242,7 +241,6 @@ function onPlayerAttacks(player) {
         this.say("Success!", 1); 
         player.weapon = "waiter"; 
         player.currentscore = 2;
-        player.item = "waiter";
         this.scheduleevent(0.001, "ditch", player);
         return;
     }
@@ -258,7 +256,6 @@ function onPlayerAttacks(player) {
         player.say("BY PASSED!", 1); 
         player.weapon = "waiter"; 
         player.currentscore = 2;
-        player.item = "waiter";
         this.scheduleevent(0.001, "ditch", player);
         return;
     }
@@ -273,13 +270,13 @@ function onPlayerAttacks(player) {
         player.say("BY PASSED!", 1); 
         player.weapon = "waiter"; 
         player.currentscore = 2;
-        player.item = "waiter";
         this.scheduleevent(0.001, "ditch", player);
         return;
     }
 }
 
 function onOutfitSwap(player) {
+    this.onPickDrink(player);
     this.namecolor = "white";
     this.say("OUTFIT SWAP", 1);
     const outfitnumber = Math.floor(Math.random() * this.outfitmax + this.outfitmin);
@@ -327,12 +324,14 @@ function onOutfitSwap(player) {
       default:
         // code block
     }
+    this.name = this.customername;
+    this.scheduleevent(0.0001, "pickdrink", player); 
     this.scheduleevent(0.001, "newchar", player); 
     return;
 }
 
 function onPickDrink(player) {
-    this.say("Connected!", 1);
+    this.say("drinkpick!", 1);
     drinkchoice = Math.floor(Math.random() * this.drinkchoicemax + this.drinkchoicemin);
     switch(drinkchoice) {
         case 1:
@@ -347,21 +346,23 @@ function onPickDrink(player) {
             this.drinkname = "Blue Berry Drink";
             this.drinkcolor = "blue";
             this.drinkchoices = "cup2";
-            this.cashoutamount = 2;
+            this.cashoutamount = 4;
             break;
         case 3:
             drinkchoice = 3;
             this.drinkname = "Leprecaun Drink";
             this.drinkcolor = "green";
             this.drinkchoices = "cup3";
-            this.cashoutamount = 2;
+            this.cashoutamount = 9;
             break;
         case 4:
             drinkchoice = 4;
             this.drinkname = "Gold Drink";
-            this.drinkcolor = "green";
+            this.drinkcolor = "yellow";
             this.drinkchoices = "cup4";
-            this.cashoutamount = 2;
+            this.cashoutamount = 14;
             break;
+            default:
+    return;
     }
 }
