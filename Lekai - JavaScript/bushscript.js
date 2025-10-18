@@ -1,7 +1,10 @@
 // ================================
-// Bush Script: Spawns Gralat Rupee on Attack
-// Bush stays separate, rupee spawned as independent NPC
+// Bush Script: Single Rupee per Spot
 // ================================
+
+function onPlayerGrabs(olayer) {
+    this.say("TESTT", 1);
+}
 
 function onCreated() {
     this.onUpdated();
@@ -20,83 +23,149 @@ function onUpdated() {
     this.width = 0.5;
     this.height = 0.5;
 
-
-    this.respawnTime = 4;
-    //this.respawnTime = Server.getconfig("job").bushRespawnTime;
+    this.respawnTime = Server.getconfig("job").bushRespawnTime;
 
     let job = Server.getconfig("job");
-    this.gralatValues = [
-        { image: "westlaw_coin1.png", min: job.gralat1Min, max: job.gralat1Max },
-        { image: "westlaw_coin5.png", min: job.gralat2Min, max: job.gralat2Max },
-        { image: "westlaw_coin30.png", min: job.gralat3Min, max: job.gralat3Max },
-        { image: "westlaw_coin100.png", min: job.gralat4Min, max: job.gralat4Max },
-        { image: "westlaw_coin500.png", min: job.gralat5Min, max: job.gralat5Max },
-        { image: "westlaw_coin1000.png", min: job.gralat6Min, max: job.gralat6Max },
-        { image: "westlaw_coin2500.png", min: job.gralat7Min, max: job.gralat7Max },
-        { image: "westlaw_coin5000.png", min: job.gralat8Min, max: job.gralat8Max }
+    this.rupeeImages = [
+        { image: "westlaw_coin1.png", max: job.gralat1Max },
+        { image: "westlaw_coin5.png", max: job.gralat2Max },
+        { image: "westlaw_coin30.png", max: job.gralat3Max },
+        { image: "westlaw_coin100.png", max: job.gralat4Max },
+        { image: "westlaw_coin500.png", max: job.gralat5Max },
+        { image: "westlaw_coin1000.png", max: job.gralat6Max },
+        { image: "westlaw_coin2500.png", max: job.gralat7Max },
+        { image: "westlaw_coin5000.png", max: job.gralat8Max }
     ];
 
-    this.possibleGralatValues = [10, 0, 0, 1, 3, 2, 10, 1, 1, 3, 2];
+    this.possibleAdd = [10, 0, 0, 1, 3, 2, 10, 1, 1, 3, 2];
 }
 
 function onPlayerAttacks(player) {
-    echo(`DEBUG: Bush attacked by ${player.name}, health before attack: ${this.health}`);
-
-    if (this.health <= this.damage) {
-        echo("DEBUG: Bush destroyed! Processing rupee spawn...");
-
-        // Hide bush, mark dead
+    if (this.health <= this.damage && !this.isdead) {
+        // Flag immediately to prevent stacking
         this.isdead = true;
-        this.image = " ";
+        this.image = " "; // hide bush
 
-        // Spawn a new rupee NPC independently
         let rupeeX = this.x + 0.17;
         let rupeeY = this.y + 0.17;
 
-        // Create rupee NPC
-        let rupee = this.map.addnpc({
-            x: rupeeX,
-            y: rupeeY,
-            image: "westlaw_coin1.png", // default, will adjust
-            npcclass: "npc",
-            scriptclasses: ["rupeeclass"],
-            nosave: true
+        // Search for existing rupee
+        let nearby = Server.searchnpcs({
+            map: this.map,
+            area: { x: rupeeX, y: rupeeY, w: 0.1, h: 0.1 },
+            name: "rupee"
         });
 
-        // Assign gralat value
-        let gralatPlus = this.possibleGralatValues[Math.floor(Math.random() * this.possibleGralatValues.length)];
-        rupee.gralatValue = gralatPlus;
-        if (rupee.gralatValue <= 0) rupee.gralatValue = 1;
+        let rupee;
+        if (nearby.length > 0) {
+            rupee = nearby[0];
+        } else {
+            rupee = this.map.addnpc({
+                x: rupeeX,
+                y: rupeeY,
+                image: "westlaw_coin1.png",
+                npcclass: "npc",
+                scriptclasses: ["rupeeclass"],
+                nosave: true,
+                name: "rupee",
+                rupeeValue: 0,
+                ownerID: null,
+                ownerName: null,
+                locked: false
+            });
+        }
 
-        // Assign image based on value
+        // Only add value when bush is slashed
+        let addVal = this.possibleAdd[Math.floor(Math.random() * this.possibleAdd.length)];
+        rupee.rupeeValue = (rupee.rupeeValue || 0) + addVal;
+        if (!rupee.ownerID) {
+            rupee.ownerID = player.id;
+            rupee.ownerName = player.name;
+        }
+
+        // Update rupee image based on value
         let assigned = false;
-        for (let g of this.gralatValues) {
-            if (rupee.gralatValue <= g.max) {
-                rupee.image = g.image;
+        for (let r of this.rupeeImages) {
+            if (rupee.rupeeValue <= r.max) {
+                rupee.image = r.image;
                 assigned = true;
                 break;
             }
         }
         if (!assigned) rupee.image = "westlaw_coin5000.png";
 
-        echo(`DEBUG: Rupee spawned at (${rupeeX}, ${rupeeY}) with value ${rupee.gralatValue}, image ${rupee.image}`);
+        // Trigger client to update
+        rupee.triggerclient("update_rupee_value", { value: rupee.rupeeValue, locked: rupee.locked });
 
-        // Schedule bush respawn
+        echo(`DEBUG: Rupee at (${rupeeX},${rupeeY}) value=${rupee.rupeeValue}, owner=${rupee.ownerName || "unclaimed"}`);
+
+        // Schedule respawn once
         this.scheduleevent(this.respawnTime, "respawn");
-        echo(`DEBUG: Bush will respawn in ${this.respawnTime} seconds`);
-    } else {
+    } else if (!this.isdead) {
         this.health -= this.damage;
-        echo(`DEBUG: Bush damaged, health after attack: ${this.health}`);
     }
 }
 
 function onRespawn() {
-    echo("DEBUG: Bush respawning...");
-
     this.name = "bush";
     this.image = "westlaw_bush-1.gif";
     this.isdead = false;
     this.health = this.maxhealth;
+}
 
-    echo(`DEBUG: Bush fully respawned — Health: ${this.health}/${this.maxhealth}`);
+// ================================
+// Rupee NPC Script
+// ================================
+
+function onCreated() {
+    this.image = this.image || "westlaw_coin1.png";
+    this.rupeeValue = this.rupeeValue || 0;
+    this.name = "rupee";
+    this.ownerID = this.ownerID || null;
+    this.ownerName = this.ownerName || null;
+    this.locked = this.locked || false;
+}
+
+// MouseDown toggles lock for owner
+function onMouseDown(player) {
+    if (this.ownerID === player.id) {
+        this.locked = !this.locked;
+        let status = this.locked ? "locked" : "unlocked";
+        player.showmessage(`Rupee is now ${status}`);
+    } else {
+        player.showmessage("You cannot lock/unlock this rupee.");
+    }
+}
+
+// PlayerTouchsMe collects rupee info
+function onPlayerTouchsMe(player) {
+    let rupeesHere = Server.searchnpcs({
+        map: this.map,
+        area: { x: this.x - 0.3, y: this.y - 0.3, w: 0.6, h: 0.6 },
+        name: "rupee"
+    });
+
+    if (rupeesHere.length === 0) {
+        player.showmessage("Unclaimed, Value 0");
+        return;
+    }
+
+    let rupee = rupeesHere[0];
+    let displayOwner = rupee.ownerName || "Unclaimed";
+    let displayValue = rupee.rupeeValue || 0;
+
+    if (rupee.locked && rupee.ownerID !== player.id) {
+        player.showmessage(`Locked, Value ${displayValue}`);
+        return;
+    }
+
+    player.showmessage(`${displayOwner} belongs to ${displayOwner}, Value ${displayValue}`);
+}
+
+// Client-side update trigger
+function onTriggeredClient(event, data) {
+    if (event === "update_rupee_value") {
+        this.rupeeValue = data.value;
+        this.locked = data.locked;
+    }
 }
