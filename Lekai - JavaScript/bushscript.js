@@ -1,5 +1,5 @@
 // ===============================
-// Bush Script — Smart AF + Proper Grab + bushID + Centered Rupee + Lock for All
+// Bush Script — Smart AF + Proper Grab + bushID + Centered Rupee + Lock for All with Auto Unlock after 2 seconds
 // ===============================
 
 function onCreated() {
@@ -7,7 +7,7 @@ function onCreated() {
 }
 
 function onUpdated() {
-    this.name = " ";  // Hidden name for the bush
+    this.name = " ";  // Hidden bush
     this.image = "westlaw_bush-1.gif";
     this.isdead = false;
 
@@ -31,10 +31,11 @@ function onUpdated() {
 
     this.possibleAdd = [10, 0, 0, 1, 3, 2, 10, 1, 1, 3, 2];
     this._respawnScheduled = false;
+    this._lockCooldown = {};  // Store cooldowns for each rupee
 }
 
 // ===============================
-// Helper: find rupee near this bush using rupeeID
+// Helper: find rupee near this bush
 // ===============================
 function getNearbyRupee() {
     let rupeeOffset = 0.17; // matches spawn offset
@@ -46,12 +47,70 @@ function getNearbyRupee() {
             w: 0.2,
             h: 0.2
         },
-        name: " " // No need to use name, we rely on ID
+        name: " " // Hidden name
     });
     for (let r of rupees) {
         if (r.bushID === this.id) return r;
     }
     return null;
+}
+
+// ===============================
+// Player clicks to lock/unlock the rupee
+// ===============================
+function onMouseDown(player) {
+    let rupee = getNearbyRupee();
+    if (!rupee) return;
+
+    // Check if the rupee is locked and if player can lock/unlock
+    if (rupee.ownerID && String(rupee.ownerID) === String(player.id)) {
+
+        // Lock the rupee if not locked already
+        if (!rupee.locked) {
+            // Prevent locking if already in cooldown
+            if (this._lockCooldown[rupee.rupeeID]) {
+                player.showmessage("Please wait for the rupee to unlock before locking it again.");
+                return;
+            }
+
+            // Lock the rupee
+            rupee.locked = true;
+            player.showmessage(`Rupee is now locked! It will automatically unlock in 2 seconds.`);
+            echo(`DEBUG: Rupee locked at (${rupee.x}, ${rupee.y}) by ${player.name}`);
+
+            // Store the current time of the lock
+            this._lockCooldown[rupee.rupeeID] = true;
+
+            // Start the 2-second timer to automatically unlock the rupee
+            this.scheduleevent(2, "unlockrupee", { rupee: rupee, player: player });
+        } else {
+            // If already locked, unlock it immediately
+            rupee.locked = false;
+            player.showmessage(`Rupee is now unlocked.`);
+            echo(`DEBUG: Rupee unlocked at (${rupee.x}, ${rupee.y}) by ${player.name}`);
+        }
+    } else {
+        player.showmessage("You cannot lock/unlock this rupee. It doesn't belong to you.");
+    }
+}
+
+// ===============================
+// Auto unlock the rupee after 2 seconds
+// ===============================
+function onUnlockRupee(params) {
+    let rupee = params.rupee;
+    let player = params.player;
+
+    // Unlock the rupee automatically after 2 seconds
+    if (rupee.locked) {
+        rupee.locked = false;
+        player.showmessage(`Rupee has been unlocked automatically after 2 seconds!`);
+        this.say(`Rupee unlocked automatically after 2 seconds by ${player.name}`);
+        echo(`DEBUG: Rupee unlocked at (${rupee.x}, ${rupee.y}) by ${player.name}`);
+    }
+
+    // Clear cooldown after unlocking
+    this._lockCooldown[rupee.rupeeID] = false;
 }
 
 // ===============================
@@ -64,27 +123,26 @@ function onPlayerAttacks(player) {
         this.isdead = true;
         this.image = " "; // hide bush
 
-        // Spawn or get rupee
         let rupee = getNearbyRupee();
         if (!rupee) {
             rupee = this.map.addnpc({
-                x: this.x + 0.17, // rupee offset
+                x: this.x + 0.17,  // rupee offset
                 y: this.y + 0.17,
                 image: "westlaw_coin1.png",
                 npcclass: "npc",
                 scriptclasses: [],
                 nosave: true,
-                name: " ", // Hidden name for rupee
+                name: " ",  // hidden rupee
                 rupeeValue: 1,
                 ownerID: player.id,
                 ownerName: player.name,
                 locked: false,
                 bushID: this.id,
-                rupeeID: Math.random().toString(36).substring(2) // Unique ID for rupee
+                rupeeID: Math.random().toString(36).substring(2) // unique ID
             });
         }
 
-        // Add value when bush is slashed
+        // Add random value
         let addVal = this.possibleAdd[Math.floor(Math.random() * this.possibleAdd.length)];
         rupee.rupeeValue = (rupee.rupeeValue || 0) + addVal;
 
@@ -105,9 +163,6 @@ function onPlayerAttacks(player) {
         }
         if (!assigned) rupee.image = "westlaw_coin5000.png";
 
-        echo(`DEBUG: Rupee at (${rupee.x},${rupee.y}) value=${rupee.rupeeValue}, owner=${rupee.ownerName}, locked=${rupee.locked}`);
-        echo(`DEBUG: Bush center = (${this.x},${this.y})`);
-
         // Schedule respawn
         if (!this._respawnScheduled) {
             this._respawnScheduled = true;
@@ -122,7 +177,6 @@ function onPlayerAttacks(player) {
 // Player grabs bush — collect coins
 // ===============================
 function onPlayerGrabs(player) {
-    // Find nearby rupee using rupeeID
     let rupee = getNearbyRupee();
     if (!rupee) {
         player.showmessage("No rupee to collect!");
@@ -169,26 +223,10 @@ function onPlayerTouchsMe(player) {
 }
 
 // ===============================
-// Mouse down — lock/unlock rupee
-// ===============================
-function onMouseDown(player) {
-    let rupee = getNearbyRupee();
-    if (!rupee) return;
-
-    if (rupee.ownerID && String(rupee.ownerID) === String(player.id)) {
-        rupee.locked = !rupee.locked;
-        let status = rupee.locked ? "locked" : "unlocked";
-        player.showmessage(`Rupee is now ${status}`);
-    } else {
-        player.showmessage("You cannot lock/unlock this rupee.");
-    }
-}
-
-// ===============================
 // Respawn bush
 // ===============================
 function onRespawn() {
-    this.name = " ";  // Hidden name for the bush
+    this.name = " ";
     this.image = "westlaw_bush-1.gif";
     this.isdead = false;
     this.health = this.maxhealth;
