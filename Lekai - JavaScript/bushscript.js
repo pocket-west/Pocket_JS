@@ -1,5 +1,6 @@
 // ===============================
-// Bush Script — Smart AF + Proper Grab + bushID + Centered Rupee + Lock System (Cancelable + Auto Unlock after 2s) + Slash Effect
+// Bush Script — Smart AF + Proper Grab + bushID + Centered Rupee
+// Lock System (Cancelable + Auto Unlock after 2s) + Slash Effect
 // ===============================
 
 function onCreated() {
@@ -14,7 +15,8 @@ function onUpdated() {
     this.maxhealth = 20;
     this.health = this.maxhealth;
     this.damage = 20;
-
+    
+    this.cooldownTime = Server.getconfig("job").lockCoolDown || 100;
     this.respawnTime = Server.getconfig("job").bushRespawnTime || 10;
 
     let job = Server.getconfig("job") || {};
@@ -71,12 +73,11 @@ function onMouseDown(player) {
             }
 
             rupee.locked = true;
-            player.showmessage("Rupee is now locked! It will automatically unlock in 2 seconds.");
+            player.showmessage(`Rupee is now locked! It will automatically unlock in ${this.cooldownTime} seconds.`);
 
             this._lockCooldown[rupee.rupeeID] = true;
 
-            // Schedule auto unlock and store event ID
-            rupee._unlockEventID = this.scheduleevent(2, "unlockrupee", {
+            rupee._unlockEventID = this.scheduleevent(this.cooldownTime, "unlockrupee", {
                 rupeeID: rupee.rupeeID,
                 playerID: player.id
             });
@@ -128,12 +129,7 @@ function onPlayerAttacks(player) {
     if (this.health <= this.damage) {
         this.isdead = true;
 
-        // 🌿 Slash animation before bush disappears
-        this.image = "westlaw_bush-slash.gif";
-        this.sleep(0.72); // match animation length
-        this.image = " "; // hide after slash
-        this.sleep(0.3); // small delay before rupee appears
-
+        // ✅ Spawn rupee immediately to avoid visual delay
         let rupee = getNearbyRupee();
         if (!rupee) {
             rupee = this.map.addnpc({
@@ -171,6 +167,15 @@ function onPlayerAttacks(player) {
         }
         if (!assigned) rupee.image = "westlaw_coin5000.png";
 
+        // 🌿 Slash animation effect
+        this.image = "westlaw_bush-slash.gif";
+        this.sleep(0.72); // match animation length
+
+        // Hide bush after slash
+        this.image = " ";
+        this.sleep(0.3);
+
+        // Schedule respawn
         if (!this._respawnScheduled) {
             this._respawnScheduled = true;
             this.scheduleevent(this.respawnTime, "respawn");
