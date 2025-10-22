@@ -1,5 +1,5 @@
 // ===============================
-// Bush Script — Smart AF + Proper Grab + bushID + Centered Rupee + Lock for All with Auto Unlock after 2 seconds
+// Bush Script — Smart AF + Proper Grab + bushID + Centered Rupee + Lock System (Cancelable + Auto Unlock after 2s) + Slash Effect
 // ===============================
 
 function onCreated() {
@@ -31,14 +31,14 @@ function onUpdated() {
 
     this.possibleAdd = [10, 0, 0, 1, 3, 2, 10, 1, 1, 3, 2];
     this._respawnScheduled = false;
-    this._lockCooldown = {};  // Store cooldowns for each rupee
+    this._lockCooldown = {};  // cooldowns per rupee ID
 }
 
 // ===============================
 // Helper: find rupee near this bush
 // ===============================
 function getNearbyRupee() {
-    let rupeeOffset = 0.17; // matches spawn offset
+    let rupeeOffset = 0.17;
     let rupees = Server.searchnpcs({
         map: this.map,
         area: {
@@ -47,7 +47,7 @@ function getNearbyRupee() {
             w: 0.2,
             h: 0.2
         },
-        name: " " // Hidden name
+        name: " " // hidden
     });
     for (let r of rupees) {
         if (r.bushID === this.id) return r;
@@ -56,103 +56,111 @@ function getNearbyRupee() {
 }
 
 // ===============================
-// Player clicks to lock/unlock the rupee
+// Player clicks to lock/unlock rupee
 // ===============================
 function onMouseDown(player) {
     let rupee = getNearbyRupee();
     if (!rupee) return;
 
-    // Check if the rupee is locked and if player can lock/unlock
     if (rupee.ownerID && String(rupee.ownerID) === String(player.id)) {
 
-        // Lock the rupee if not locked already
         if (!rupee.locked) {
-            // Prevent locking if already in cooldown
             if (this._lockCooldown[rupee.rupeeID]) {
                 player.showmessage("Please wait for the rupee to unlock before locking it again.");
                 return;
             }
 
-            // Lock the rupee
             rupee.locked = true;
-            player.showmessage(`Rupee is now locked! It will automatically unlock in 2 seconds.`);
-            echo(`DEBUG: Rupee locked at (${rupee.x}, ${rupee.y}) by ${player.name}`);
+            player.showmessage("Rupee is now locked! It will automatically unlock in 2 seconds.");
 
-            // Store the current time of the lock
             this._lockCooldown[rupee.rupeeID] = true;
 
-            // Start the 2-second timer to automatically unlock the rupee
-            this.scheduleevent(2, "unlockrupee", { rupee: rupee, player: player });
+            // Schedule auto unlock and store event ID
+            rupee._unlockEventID = this.scheduleevent(2, "unlockrupee", {
+                rupeeID: rupee.rupeeID,
+                playerID: player.id
+            });
+
         } else {
-            // If already locked, unlock it immediately
+            // Manual unlock — cancel timer
             rupee.locked = false;
-            player.showmessage(`Rupee is now unlocked.`);
-            echo(`DEBUG: Rupee unlocked at (${rupee.x}, ${rupee.y}) by ${player.name}`);
+            player.showmessage("Rupee is now unlocked.");
+
+            if (rupee._unlockEventID) {
+                this.cancelevent(rupee._unlockEventID);
+                rupee._unlockEventID = null;
+            }
+
+            this._lockCooldown[rupee.rupeeID] = false;
         }
+
     } else {
         player.showmessage("You cannot lock/unlock this rupee. It doesn't belong to you.");
     }
 }
 
 // ===============================
-// Auto unlock the rupee after 2 seconds
+// Auto unlock after 2 seconds (safe + iAppsBeats-compatible)
 // ===============================
 function onUnlockRupee(params) {
-    let rupee = params.rupee;
-    let player = params.player;
+    let rupeeID = params.rupeeID;
+    let playerID = params.playerID;
 
-    // Unlock the rupee automatically after 2 seconds
-    if (rupee.locked) {
-        rupee.locked = false;
-        player.showmessage(`Rupee has been unlocked automatically after 2 seconds!`);
-        this.say(`Rupee unlocked automatically after 2 seconds by ${player.name}`);
-        echo(`DEBUG: Rupee unlocked at (${rupee.x}, ${rupee.y}) by ${player.name}`);
-    }
+    let rupee = getNearbyRupee();
+    if (!rupee || !rupee.locked || rupee.rupeeID !== rupeeID) return;
 
-    // Clear cooldown after unlocking
-    this._lockCooldown[rupee.rupeeID] = false;
+    let players = Server.searchplayers({ map: this.map, id: playerID });
+    let player = players.length ? players[0] : null;
+
+    rupee.locked = false;
+    rupee._unlockEventID = null;
+    this._lockCooldown[rupeeID] = false;
+
+    if (player) player.showmessage("Rupee has been unlocked automatically after 2 seconds!");
 }
 
 // ===============================
-// Player attacks bush
+// Player attacks bush (spawn rupee + slash animation)
 // ===============================
 function onPlayerAttacks(player) {
     if (this.isdead) return;
 
     if (this.health <= this.damage) {
         this.isdead = true;
-        this.image = " "; // hide bush
+
+        // 🌿 Slash animation before bush disappears
+        this.image = "westlaw_bush-slash.gif";
+        this.sleep(0.72); // match animation length
+        this.image = " "; // hide after slash
+        this.sleep(0.3); // small delay before rupee appears
 
         let rupee = getNearbyRupee();
         if (!rupee) {
             rupee = this.map.addnpc({
-                x: this.x + 0.17,  // rupee offset
+                x: this.x + 0.17,
                 y: this.y + 0.17,
                 image: "westlaw_coin1.png",
                 npcclass: "npc",
                 scriptclasses: [],
                 nosave: true,
-                name: " ",  // hidden rupee
+                name: " ",
                 rupeeValue: 1,
                 ownerID: player.id,
                 ownerName: player.name,
                 locked: false,
                 bushID: this.id,
-                rupeeID: Math.random().toString(36).substring(2) // unique ID
+                rupeeID: Math.random().toString(36).substring(2)
             });
         }
 
-        // Add random value
         let addVal = this.possibleAdd[Math.floor(Math.random() * this.possibleAdd.length)];
         rupee.rupeeValue = (rupee.rupeeValue || 0) + addVal;
 
-        // Assign owner if none
         if (!rupee.ownerID) {
             rupee.ownerID = player.id;
             rupee.ownerName = player.name;
         }
 
-        // Update image based on value
         let assigned = false;
         for (let r of this.rupeeImages) {
             if (rupee.rupeeValue <= r.max) {
@@ -163,18 +171,18 @@ function onPlayerAttacks(player) {
         }
         if (!assigned) rupee.image = "westlaw_coin5000.png";
 
-        // Schedule respawn
         if (!this._respawnScheduled) {
             this._respawnScheduled = true;
             this.scheduleevent(this.respawnTime, "respawn");
         }
+
     } else {
         this.health -= this.damage;
     }
 }
 
 // ===============================
-// Player grabs bush — collect coins
+// Player grabs — collect rupee
 // ===============================
 function onPlayerGrabs(player) {
     let rupee = getNearbyRupee();
@@ -183,34 +191,23 @@ function onPlayerGrabs(player) {
         return;
     }
 
-    // Locked rupees cannot be grabbed by anyone
     if (rupee.locked) {
         player.showmessage(`This rupee is locked by ${rupee.ownerName}`);
         return;
     }
 
-    // Amount of coins to give
     let amount = rupee.rupeeValue || 1;
-
-    // Add coins to player inventory
     player.additem("coin1", amount);
-
-    // Inform player
     player.showmessage(`You collected ${amount} coin${amount > 1 ? "s" : ""} from ${rupee.ownerName || "Unclaimed"}!`);
-
-    // Remove rupee from map
     rupee.destroy();
 }
 
 // ===============================
-// Player touches bush — show rupee info
+// Touch bush — show info
 // ===============================
 function onPlayerTouchsMe(player) {
     let rupee = getNearbyRupee();
-    if (!rupee) {
-        player.showmessage("No rupee here yet!");
-        return;
-    }
+    if (!rupee) return;
 
     let displayOwner = rupee.ownerName || "Unclaimed";
     let displayValue = rupee.rupeeValue || 0;
